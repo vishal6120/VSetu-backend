@@ -24,9 +24,16 @@ app = FastAPI()
 # Naya code: Yeh humara security guard hai jisko pata hai ki token kahan se milta hai
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token/")
 
+# main.py ke andar CORS wali setting dhoondhein aur aise update karein:
+
+origins = [
+    "http://localhost:5173", # Purana local wala
+    "https://sahayak-frontend-omega.vercel.app", # <-- Aapka naya Vercel link! (End mein slash '/' mat lagana)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
