@@ -1,10 +1,10 @@
-from database import engine, Base
-import models 
+from database import engine
+import models
 
-print("⏳ Purani tables delete ho rahi hain...")
-Base.metadata.drop_all(bind=engine)
+print("Purani tables delete kar rahe hain...")
+models.Base.metadata.drop_all(bind=engine)
 
-print("🛠️ Nayi tables naye columns ke sath ban rahi hain...")
-Base.metadata.create_all(bind=engine)
+print("Nayi tables (Trade column ke sath) bana rahe hain...")
+models.Base.metadata.create_all(bind=engine)
 
-print("✅ Database ekdum fresh aur ready hai! Ab error nahi aayega.")
+print("✅ Database successfully reset ho gaya!")

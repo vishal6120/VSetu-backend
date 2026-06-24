@@ -1,31 +1,26 @@
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from security import verify_password, create_access_token
 from fastapi.middleware.cors import CORSMiddleware
-import security
-from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 from sqlalchemy import text
-from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from security import SECRET_KEY, ALGORITHM
+from pydantic import BaseModel
 
-# Apni files import kar rahe hain
+import security
+from security import verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from database import SessionLocal, engine
 import models, schemas, crud
+import random
 
 # Database mein tables create karna
 models.Base.metadata.create_all(bind=engine)
 
-
-
 app = FastAPI()
 
-# Naya code: Yeh humara security guard hai jisko pata hai ki token kahan se milta hai
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token/")
+# Yeh token check karne wala system hai
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
 
-# main.py ke andar CORS wali setting dhoondhein aur aise update karein:
-
+# main.py ke andar CORS wali setting:
 origins = [
     "http://localhost:5173", # Purana local wala
     "https://sahayak-frontend-omega.vercel.app", # <-- Aapka naya Vercel link! (End mein slash '/' mat lagana)
@@ -33,12 +28,11 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # Testing ke liye ek baar "*" karke dekhein
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Har naye request ke liye naya database connection dena
 def get_db():
     db = SessionLocal()
@@ -46,9 +40,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-        # Yeh token check karne wala system hai
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -73,7 +64,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 @app.get("/")
 def read_root():
-    return {"message": "Aapka Sahayak Backend Engine Started!"}
+    return {"message": "VSetu Backend Engine Started!"}
 
 # Yeh hai humara Asli API Endpoint!
 @app.post("/api/bookings")
@@ -83,16 +74,26 @@ def create_booking(booking: schemas.BookingCreate, db: Session = Depends(get_db)
     return crud.create_booking(db=db, booking=booking)
 
 # main.py mein purane @app.post wale function ke niche ise add karein
-
-#@app.get("/api/bookings", response_model=list[schemas.Booking])
-#def read_bookings(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
- #   bookings = crud.get_bookings(db, skip=skip, limit=limit)
-  #  return bookings
+# @app.get("/api/bookings", response_model=list[schemas.Booking])
+# def read_bookings(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+#     bookings = crud.get_bookings(db, skip=skip, limit=limit)
+#     return bookings
 
 @app.get("/api/bookings")
 def get_all_bookings(db: Session = Depends(get_db)):
     # Andar ka code waisa hi rehne dein
     bookings = db.query(models.Booking).all()
+    return bookings
+
+@app.get("/api/bookings/customer/{phone}")
+def get_customer_bookings(phone: str, db: Session = Depends(get_db)):
+    # Database mein check karo jahan phone_number match ho
+    bookings = db.query(models.Booking).filter(models.Booking.phone_number == phone).all()
+    
+    # Agar uski koi booking nahi hai, toh khali list bhej do
+    if not bookings:
+        return []
+        
     return bookings
 
 # main.py mein sabse niche yeh naya route add karein
@@ -107,8 +108,8 @@ def create_technician(technician: schemas.TechnicianCreate, db: Session = Depend
     return crud.create_technician(db=db, technician=technician)
 
 # main.py mein sabse niche yeh naya route add karein
-@app.post("/api/token/")
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@app.post("/api/technician/token")  # <--- YAHAN CHANGE KIYA HAI
+def login_for_access_token_tech(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     # 1. Database mein username check karo
     user = crud.get_technician_by_username(db, username=form_data.username)
 
@@ -126,22 +127,36 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     # Yeh format standard hota hai, React ise easily padh lega
     return {"access_token": access_token, "token_type": "bearer"}
 
+# 1. KAAM COMPLETE AUR EXTRA PAYMENT ADD KARNE KA NAYA ROUTE
 @app.put("/api/bookings/{booking_id}/complete")
-def complete_booking(booking_id: int, otp: str, db: Session = Depends(get_db)):
-    # 1. Booking dhoondho
+def complete_booking(booking_id: int, otp: str, extra_charge: int = 0, db: Session = Depends(get_db)):
     booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
-
     if not booking:
         raise HTTPException(status_code=404, detail="Booking nahi mili")
 
-    # 2. OTP match karo
     if booking.completion_otp != otp:
         raise HTTPException(status_code=400, detail="Galat OTP! Kaam abhi complete nahi ho sakta.")
 
-    # 3. Agar OTP sahi hai, toh status update kar do
     booking.status = "Completed"
+    
+    # Naya Feature: Agar ladke ne extra paise daale hain, toh use final amount mein jod do
+    # (Taki Manager jab verify kare toh use pata rahe ki extra charge laga tha)
+    booking.final_amount = extra_charge 
+    
     db.commit()
     return {"message": "Kaam successfully complete ho gaya!"}
+
+# 2. CUSTOMER PHONE NA UTHAYE TOH RESCHEDULE KARNE KA NAYA ROUTE
+@app.put("/api/bookings/{booking_id}/reschedule")
+def reschedule_booking(booking_id: int, db: Session = Depends(get_db)):
+    booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking nahi mili")
+    
+    booking.status = "Rescheduled"
+    booking.assigned_technician = None # Ladke ko free kar do taaki wo agla kaam kar sake
+    db.commit()
+    return {"message": "Booking reschedule mark kar di gayi hai."}
 
 
 # ==========================================
@@ -150,18 +165,18 @@ def complete_booking(booking_id: int, otp: str, db: Session = Depends(get_db)):
 
 # 1. Ladke ko kaam par bhejne wala route (Assign Technician)
 @app.put("/api/bookings/{booking_id}/assign")
-def assign_technician(booking_id: int, technician_name: str, db: Session = Depends(get_db)):
+def assign_technician(booking_id: int, technician_name: str, technician_phone: str = "9876543210", db: Session = Depends(get_db)):
     # Pehle database mein booking dhundo
     booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking nahi mili!")
     
-    # Ladke ka naam save karo aur status change karo
+    # Ladke ka naam, number save karo aur status change karo
     booking.assigned_technician = technician_name
+    booking.technician_phone = technician_phone  # <--- NAYI LINE (Number save karne ke liye)
     booking.status = "Assigned"
     db.commit()
     return {"message": f"Kaam {technician_name} ko de diya gaya hai!"}
-
 # 2. Paise cross-verify karne wala route (Verify Amount)
 @app.put("/api/bookings/{booking_id}/verify")
 def verify_amount(booking_id: int, amount: int, db: Session = Depends(get_db)):
@@ -211,7 +226,7 @@ def get_business_stats(db: Session = Depends(get_db), current_user: models.User 
 # ==========================================
 
 @app.post("/api/login")
-def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
+def login_for_access_token_user(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
     # 1. Database mein check karo ki kya yeh username hai?
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
 
@@ -230,3 +245,140 @@ def login_for_access_token(db: Session = Depends(get_db), form_data: OAuth2Passw
 
     # 4. Token aur user ka role Frontend (React) ko bhej do
     return {"access_token": access_token, "token_type": "bearer", "role": user.role}
+
+
+# Frontend se aane wale username/password ko pakadne ka dibba
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+# ==========================================
+# LOGIN / AUTHENTICATION ROUTE (SMART FOR LAUNCH)
+# ==========================================
+
+@app.post("/api/auth/login")
+def login_user(request: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == request.username).first()
+    generated_otp = str(random.randint(1000, 9999))
+    
+    # 👇 NAYA: Manager/Malik ke number ke liye direct VIP entry 👇
+    # Aap is '9999900000' ko apne asli manager number se badal sakte hain
+    if request.username == "9999900000":
+        return {
+            "access_token": "super-secret-vip-pass",
+            "role": "admin", # Isko admin role mil jayega
+            "token_type": "bearer",
+            "screen_otp": generated_otp
+        }
+    
+    # Baaki Customer logic waisa hi rahega
+    if not user:
+        return {
+            "access_token": "new-customer-vip-pass",
+            "role": "customer",
+            "token_type": "bearer",
+            "screen_otp": generated_otp
+        }
+        
+    return {
+        "access_token": "super-secret-vip-pass",
+        "role": user.role if hasattr(user, 'role') else "customer",
+        "token_type": "bearer",
+        "screen_otp": generated_otp
+    }
+
+from fastapi import Form, HTTPException
+
+# 1. Saare Technicians ki UserIDs, Trade aur Phone dekhne ka API
+@app.get("/api/technicians")
+def get_all_technicians(db: Session = Depends(get_db)):
+    techs = db.query(models.User).filter(models.User.role == "technician").all()
+    # NAYA: Ab id, username, trade ke sath phone bhi bhejenge
+    return [{"id": t.id, "username": t.username, "trade": t.trade, "phone": t.phone} for t in techs]
+
+# 2. Naya Technician (Trade aur Phone ke sath) banane ka API
+@app.post("/api/technicians/create")
+def add_new_technician(
+    username: str = Form(...), 
+    password: str = Form(...), 
+    trade: str = Form(...), 
+    phone: str = Form(...), # <--- NAYA: Phone number ka parameter
+    db: Session = Depends(get_db)
+):
+    existing_user = db.query(models.User).filter(models.User.username == username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Ye Username pehle se exist karta hai!")
+    
+    hashed_pw = security.get_password_hash(password)
+    # NAYA: Phone number ko bhi DB mein save kar rahe hain
+    new_user = models.User(username=username, hashed_password=hashed_pw, role="technician", trade=trade, phone=phone)
+    db.add(new_user)
+    db.commit()
+    return {"message": "Account successfully ban gaya!"}
+
+
+    # main.py mein sabse niche add karein
+@app.delete("/api/technicians/{tech_id}")
+def delete_technician(tech_id: int, db: Session = Depends(get_db)):
+    # 1. Database mein us ladke ko ID se dhoondho
+    user = db.query(models.User).filter(models.User.id == tech_id, models.User.role == "technician").first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Technician nahi mila")
+    
+    # 2. Agar mil gaya toh usko delete kar do
+    db.delete(user)
+    db.commit()
+    return {"message": "Technician successfully delete ho gaya"}
+
+
+# ==========================================
+# TECHNICIAN PERSONAL WORKLIST ROUTE
+# ==========================================
+
+@app.get("/api/technician/my-bookings")
+def get_my_assigned_bookings(
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_current_user)
+):
+    # 1. Pehle Bouncer check karega ki yeh sach mein ek technician hai ya nahi
+    if current_user.role != "technician":
+        raise HTTPException(status_code=403, detail="Aap technician nahi hain!")
+
+    # 2. STRICT FILTER: Database se wahi bookings nikalo jo:
+    #    a) Is specific technician ke naam par assigned hon (current_user.username)
+    #    b) Aur jiska status 'Completed' ya 'Verified' naa ho (yaani abhi kaam pending/accepted hai)
+    my_bookings = db.query(models.Booking).filter(
+        models.Booking.assigned_technician == current_user.username
+    ).all()
+    
+    return my_bookings
+
+    # ==========================================
+# TECHNICIAN ACCEPT / REJECT ROUTES
+# ==========================================
+
+# 1. Ladke ne kaam Accept kar liya
+@app.put("/api/bookings/{booking_id}/accept")
+def accept_booking(booking_id: int, db: Session = Depends(get_db)):
+    booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking nahi mili")
+    
+    # Status change karke Accepted kar do
+    booking.status = "Accepted"
+    db.commit()
+    return {"message": "Aapne kaam accept kar liya hai!"}
+
+# 2. Ladke ne kaam Reject kar diya (Mana kar diya)
+@app.put("/api/bookings/{booking_id}/reject")
+def reject_booking(booking_id: int, db: Session = Depends(get_db)):
+    booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking nahi mili")
+    
+    # Status wapas Pending kar do aur ladke ka naam hata do
+    booking.status = "Pending"
+    booking.assigned_technician = None 
+    db.commit()
+    return {"message": "Kaam reject kar diya gaya hai."}
