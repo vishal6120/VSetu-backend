@@ -27,3 +27,6 @@ else:
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+#https://vsetu-backend.onrender.com
+#postgresql://vsetu_db_user:F37lIsOyvhMaFbJA1GYxVh0IiP5o5pod@dpg-d8tmlk77f7vs73factf0-a.virginia-postgres.render.com/vsetu_db

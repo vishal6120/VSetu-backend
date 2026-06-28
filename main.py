@@ -96,6 +96,32 @@ def get_customer_bookings(phone: str, db: Session = Depends(get_db)):
         
     return bookings
 
+# ==========================================
+# CUSTOMER CANCELLATION ROUTE (NAYA FEATURE)
+# ==========================================
+@app.put("/api/bookings/{booking_id}/cancel")
+def cancel_booking(booking_id: int, db: Session = Depends(get_db)):
+    # 1. Pehle database mein check karo ki aisi koi booking hai bhi ya nahi
+    booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Aisi koi booking nahi mili.")
+        
+    # 2. Logic Check: Kya ye booking aisi stage par hai jo cancel nahi ho sakti?
+    if booking.status in ["Completed", "Verified"]:
+        raise HTTPException(status_code=400, detail="Ye booking complete ho chuki hai, isliye cancel nahi ho sakti.")
+    if booking.status == "Cancelled":
+         raise HTTPException(status_code=400, detail="Ye booking pehle se hi cancelled hai.")
+        
+    # 3. Agar sab theek hai, toh status change karke "Cancelled" kar do
+    booking.status = "Cancelled"
+    
+    # 4. Agar koi technician assigned tha, toh use free kar do
+    booking.assigned_technician = None
+    booking.technician_phone = None
+    
+    db.commit()
+    return {"message": "Booking successfully cancel ho gayi hai!"}
+
 # main.py mein sabse niche yeh naya route add karein
 @app.post("/api/technicians/", response_model=schemas.Technician)
 def create_technician(technician: schemas.TechnicianCreate, db: Session = Depends(get_db)):
