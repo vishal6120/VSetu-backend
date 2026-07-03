@@ -12,6 +12,20 @@ from database import SessionLocal, engine
 import models, schemas, crud
 import random
 
+# ==========================================
+# NAYA FIREBASE SETUP YAHAN ADD KAREIN
+# ==========================================
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+try:
+    cred = credentials.Certificate("firebase-admin-key.json")
+    firebase_admin.initialize_app(cred)
+    print("Firebase Admin engine started successfully! 🚀")
+except Exception as e:
+    print("Firebase initialization error:", e)
+# ==========================================
+
 # Database mein tables create karna
 models.Base.metadata.create_all(bind=engine)
 
@@ -69,10 +83,28 @@ def read_root():
 # Yeh hai humara Asli API Endpoint!
 @app.post("/api/bookings")
 def create_booking(booking: schemas.BookingCreate, db: Session = Depends(get_db)):
-    # Data validate ho kar 'booking' variable mein aayega
-    # Phir crud function usko database mein daal dega
-    return crud.create_booking(db=db, booking=booking)
+    # 1. Pehle database mein booking save karo
+    new_booking = crud.create_booking(db=db, booking=booking)
 
+    # ==========================================
+    # NAYA FIREBASE TRIGGER (MANAGER KE LIYE)
+    # ==========================================
+    try:
+        # Hum ek specific topic "all_managers" par notification bhej rahe hain
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title="VSetu: Naya Order Aaya Hai! 🛍️",
+                body=f"Ek customer ne nayi booking ki hai. Jaldi dashboard par check karein!"
+            ),
+            topic="all_managers"  
+        )
+        messaging.send(message)
+        print("Manager ko naye order ka notification bhej diya!")
+    except Exception as e:
+        print("Manager notification fail ho gaya:", e)
+    # ==========================================
+
+    return new_booking
 # main.py mein purane @app.post wale function ke niche ise add karein
 # @app.get("/api/bookings", response_model=list[schemas.Booking])
 # def read_bookings(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
@@ -202,6 +234,25 @@ def assign_technician(booking_id: int, technician_name: str, technician_phone: s
     booking.technician_phone = technician_phone  # <--- NAYI LINE (Number save karne ke liye)
     booking.status = "Assigned"
     db.commit()
+
+    # ==========================================
+    # NAYA FIREBASE NOTIFICATION TRIGGER
+    # ==========================================
+    try:
+        # Hum notification ko ek "topic" par bhejenge jiska naam technician_name hoga
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title="VSetu: Naya Kaam Aaya Hai! ⚡",
+                body=f"Booking ID {booking_id} aapko assign hui hai. Jaldi app check karein."
+            ),
+            topic=technician_name  # Ye ladke ke username se match karega
+        )
+        response = messaging.send(message)
+        print("Notification bheja gaya:", response)
+    except Exception as e:
+        print("Notification fail ho gaya:", e)
+    # ==========================================
+
     return {"message": f"Kaam {technician_name} ko de diya gaya hai!"}
 # 2. Paise cross-verify karne wala route (Verify Amount)
 @app.put("/api/bookings/{booking_id}/verify")
