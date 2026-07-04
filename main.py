@@ -367,6 +367,17 @@ class LoginRequest(BaseModel):
 # ==========================================
 @app.post("/api/auth/login")
 def login_user(request: LoginRequest, db: Session = Depends(get_db)):
+
+    # 👇 NAYA: Admin security check
+    if request.username == "9999900000":
+        # Yahan apna koi bhi mushkil password rakh lijiye jo kisi ko na pata ho
+        if request.password != "VSetu@Admin2026": 
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Galat Admin Password! Access Denied."
+            )
+
+
     user = db.query(models.User).filter(models.User.username == request.username).first()
     generated_otp = str(random.randint(1000, 9999))
     
