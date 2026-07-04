@@ -17,6 +17,38 @@ import random
 # ==========================================
 import firebase_admin
 from firebase_admin import credentials, messaging
+import requests # Yeh line sabse upar add karni hai
+
+# ==========================================
+# NAYA: FAST2SMS ENGINE
+# ==========================================
+# Jab aap Fast2SMS par account banayenge, toh wahan se API key copy karke yahan daalni hai
+FAST2SMS_API_KEY = "YAHAN_APNI_FAST2SMS_API_KEY_PASTE_KAREIN"
+
+def send_real_otp(phone_number, otp):
+    url = "https://www.fast2sms.com/dev/bulkV2"
+    querystring = {
+        "authorization": FAST2SMS_API_KEY,
+        "variables_values": otp,
+        "route": "otp",
+        "numbers": phone_number
+    }
+    headers = {'cache-control': "no-cache"}
+    
+    try:
+        response = requests.request("GET", url, headers=headers, params=querystring)
+        data = response.json()
+        
+        # Fast2SMS check karega ki number asli hai ya nahi
+        if data.get("return") == True:
+            return True, "SMS Successfully sent"
+        else:
+            # Agar number fake hai ya network par nahi hai
+            error_message = data.get("message", "Invalid Number")
+            return False, error_message
+    except Exception as e:
+        return False, "SMS Server Down Hai"
+# ==========================================
 
 try:
     cred = credentials.Certificate("firebase-admin-key.json")
@@ -330,31 +362,37 @@ class LoginRequest(BaseModel):
     password: str
 
 # ==========================================
-# LOGIN / AUTHENTICATION ROUTE (SMART FOR LAUNCH)
+# LOGIN / AUTHENTICATION ROUTE (REAL OTP WALA)
 # ==========================================
-
 @app.post("/api/auth/login")
 def login_user(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == request.username).first()
     generated_otp = str(random.randint(1000, 9999))
     
-    # 👇 NAYA: Manager/Malik ke number ke liye direct VIP entry 👇
-    # Aap is '9999900000' ko apne asli manager number se badal sakte hain
+    # VIP Entry (Manager/Malik ke number ke liye OTP bypass)
     if request.username == "9999900000":
         return {
             "access_token": "super-secret-vip-pass",
-            "role": "admin", # Isko admin role mil jayega
+            "role": "admin",
             "token_type": "bearer",
-            "screen_otp": generated_otp
+            "screen_otp": generated_otp # Manager ko screen par dikha do
         }
     
-    # Baaki Customer logic waisa hi rahega
+    # 👇 NAYA: FAST2SMS BHEJNE KA LOGIC 👇
+    # API key lagane ke baad is True ko hata kar condition active karni hai
+    is_sent, msg = send_real_otp(request.username, generated_otp)
+    
+    # Agar Fast2SMS ne error de diya (fake number ya koi aur dikkat)
+    if not is_sent:
+        raise HTTPException(status_code=400, detail=f"SMS Error: {msg}. Kripaya sahi number daalein.")
+    
+    # Baaki Customer / Technician logic waisa hi rahega
     if not user:
         return {
             "access_token": "new-customer-vip-pass",
             "role": "customer",
             "token_type": "bearer",
-            "screen_otp": generated_otp
+            "screen_otp": generated_otp # Testing ke baad ise hata dena hai taaki screen par na dikhe
         }
         
     return {
@@ -363,8 +401,6 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "screen_otp": generated_otp
     }
-
-from fastapi import Form, HTTPException
 
 # 1. Saare Technicians ki UserIDs, Trade aur Phone dekhne ka API
 @app.get("/api/technicians")
