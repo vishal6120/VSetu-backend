@@ -23,7 +23,7 @@ import requests # Yeh line sabse upar add karni hai
 # NAYA: FAST2SMS ENGINE
 # ==========================================
 # Jab aap Fast2SMS par account banayenge, toh wahan se API key copy karke yahan daalni hai
-FAST2SMS_API_KEY = "YAHAN_APNI_FAST2SMS_API_KEY_PASTE_KAREIN"
+FAST2SMS_API_KEY = "8CSRXiV7M6xO9JgpL4k5q2W0KTQIhNszmn3AEotPFd1cDvGwyZ8FMdzaPxv5U4L2f1m3QnWETJuGrohS"
 
 def send_real_otp(phone_number, otp):
     url = "https://www.fast2sms.com/dev/bulkV2"
