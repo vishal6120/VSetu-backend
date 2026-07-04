@@ -380,10 +380,10 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
     
     # 👇 NAYA: FAST2SMS BHEJNE KA LOGIC 👇
     # API key lagane ke baad is True ko hata kar condition active karni hai
-    is_sent, msg = send_real_otp(request.username, generated_otp)
+    #is_sent, msg = send_real_otp(request.username, generated_otp)
     
     # Agar Fast2SMS ne error de diya (fake number ya koi aur dikkat)
-    if not is_sent:
+    #if not is_sent:
         raise HTTPException(status_code=400, detail=f"SMS Error: {msg}. Kripaya sahi number daalein.")
     
     # Baaki Customer / Technician logic waisa hi rahega
