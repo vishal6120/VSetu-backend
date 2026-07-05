@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from jose import JWTError, jwt
 from pydantic import BaseModel
+import os
 
 
 import security
@@ -371,7 +372,7 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
     # 👇 NAYA: Admin security check
     if request.username == "9999900000":
         # Yahan apna koi bhi mushkil password rakh lijiye jo kisi ko na pata ho
-        if request.password != "VSetu@Admin2026": 
+        if request.password != os.getenv("ADMIN_PASSWORD", "VSetu@Admin2026"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Galat Admin Password! Access Denied."
