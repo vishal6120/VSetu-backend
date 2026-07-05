@@ -508,3 +508,15 @@ def reject_booking(booking_id: int, db: Session = Depends(get_db)):
     booking.assigned_technician = None 
     db.commit()
     return {"message": "Kaam reject kar diya gaya hai."}
+
+@app.get("/api/debug-admin")
+def debug_admin(db: Session = Depends(get_db)):
+    # Hum seedha database se 9999900000 wale admin ko utha rahe hain
+    # Taki aamne-saamne dekh sakein ki database ki tijori mein kya password save hai
+    admin_user = db.query(User).filter(User.phone == "9999900000").first()
+    if admin_user:
+        print(f"👉 DATABASE MEIN SAVE PASSWORD HAI: '{admin_user.password}'")
+        return {"status": "found", "db_password_length": len(admin_user.password)}
+    else:
+        print("👉 DATABASE MEIN YEH ADMIN NUMBER MILA HI NAHI!")
+        return {"status": "not_found"}
