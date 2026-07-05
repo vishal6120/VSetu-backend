@@ -371,12 +371,12 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
 
     # 👇 NAYA: Admin security check
     if request.username == "9999900000":
-        # Yahan apna koi bhi mushkil password rakh lijiye jo kisi ko na pata ho
-        if request.password != os.getenv("ADMIN_PASSWORD", "VSetu@Admin2026"):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Galat Admin Password! Access Denied."
-            )
+        if request.password == os.getenv("ADMIN_PASSWORD", "VSetu@Admin2026"):
+            # PASSWORD MATCH HO GAYA -> SEEDHA TOKEN RETURN KARO!
+            access_token = create_access_token(data={"sub": "9999900000", "role": "admin"}) # Agar role check hai toh daalein
+            return {"access_token": access_token, "token_type": "bearer"}
+        else:
+            raise HTTPException(status_code=401, detail="Galat Admin Password! Access Denied.")
 
 
     user = db.query(models.User).filter(models.User.phone == request.username).first()
