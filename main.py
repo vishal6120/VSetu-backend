@@ -339,7 +339,7 @@ def get_business_stats(db: Session = Depends(get_db), current_user: models.User 
 @app.post("/api/login")
 def login_for_access_token_user(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
     # 1. Database mein check karo ki kya yeh username hai?
-    user = db.query(models.User).filter(models.User.username == form_data.username).first()
+    user = db.query(models.User).filter(models.User.phone == form_data.username).first()
 
     # 2. Agar user nahi mila ya password match nahi hua (verify_password function use karke)
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -379,7 +379,7 @@ def login_user(request: LoginRequest, db: Session = Depends(get_db)):
             )
 
 
-    user = db.query(models.User).filter(models.User.username == request.username).first()
+    user = db.query(models.User).filter(models.User.phone == request.username).first()
     generated_otp = str(random.randint(1000, 9999))
     
     # VIP Entry (Manager/Malik ke number ke liye OTP bypass)
