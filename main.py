@@ -369,43 +369,38 @@ class LoginRequest(BaseModel):
 @app.post("/api/auth/login")
 def login_user(request: LoginRequest, db: Session = Depends(get_db)):
 
-    # 👇 NAYA: Admin security check
+    # 👇 1. ADMIN SECURITY CHECK (Bypass Logic)
     if request.username == "9999900000":
         if request.password == os.getenv("ADMIN_PASSWORD", "VSetu@Admin2026"):
             # PASSWORD MATCH HO GAYA -> SEEDHA TOKEN RETURN KARO!
-            access_token = create_access_token(data={"sub": "9999900000", "role": "admin"}) # Agar role check hai toh daalein
-            return {"access_token": access_token, "token_type": "bearer"}
+            access_token = create_access_token(data={"sub": "9999900000", "role": "admin"})
+            generated_otp = "1234" # Frontend ke liye dummy OTP
+            return {
+                "access_token": access_token, 
+                "token_type": "bearer",
+                "role": "admin",             # NAYA: Frontend app ko role chahiye
+                "screen_otp": generated_otp  # NAYA: Frontend app ko otp chahiye
+            }
         else:
             raise HTTPException(status_code=401, detail="Galat Admin Password! Access Denied.")
 
-
+    # 👇 2. NORMAL USERS KA LOGIC
     user = db.query(models.User).filter(models.User.phone == request.username).first()
     generated_otp = str(random.randint(1000, 9999))
     
-    # VIP Entry (Manager/Malik ke number ke liye OTP bypass)
-    if request.username == "9999900000":
-        return {
-            "access_token": "super-secret-vip-pass",
-            "role": "admin",
-            "token_type": "bearer",
-            "screen_otp": generated_otp # Manager ko screen par dikha do
-        }
+    # 👇 3. FAST2SMS BHEJNE KA LOGIC (FIXED)
+    # Dhyan dijiye: Agar upar wala 'if not is_sent:' comment hai, toh neeche wala 'raise' bhi comment hona chahiye, varna app crash karegi!
+    # is_sent, msg = send_real_otp(request.username, generated_otp)
+    # if not is_sent:
+    #     raise HTTPException(status_code=400, detail=f"SMS Error: {msg}. Kripaya sahi number daalein.")
     
-    # 👇 NAYA: FAST2SMS BHEJNE KA LOGIC 👇
-    # API key lagane ke baad is True ko hata kar condition active karni hai
-    #is_sent, msg = send_real_otp(request.username, generated_otp)
-    
-    # Agar Fast2SMS ne error de diya (fake number ya koi aur dikkat)
-    #if not is_sent:
-        raise HTTPException(status_code=400, detail=f"SMS Error: {msg}. Kripaya sahi number daalein.")
-    
-    # Baaki Customer / Technician logic waisa hi rahega
+    # 👇 4. CUSTOMER / TECHNICIAN LOGIC
     if not user:
         return {
             "access_token": "new-customer-vip-pass",
             "role": "customer",
             "token_type": "bearer",
-            "screen_otp": generated_otp # Testing ke baad ise hata dena hai taaki screen par na dikhe
+            "screen_otp": generated_otp 
         }
         
     return {
